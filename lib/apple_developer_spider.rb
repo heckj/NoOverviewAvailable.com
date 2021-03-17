@@ -12,7 +12,13 @@ require 'odyssey'
 
 class AppleDeveloperSpider < Kimurai::Base
   @engine = :mechanize
-  @start_urls = ['https://developer.apple.com/documentation/']
+  @start_urls = ['https://developer.apple.com/documentation/technologies/']
+  # top level page no longer includes direct links to underlying HTML, instead
+  # it's updated with Javascript that loads in the technologies from a JSON
+  # manifest, published at 
+  # https://developer.apple.com/tutorials/data/documentation/technologies.json
+  #  - so load up the JSON, parse it and construct a set of "start urls", 
+  # then invoke the crawl
   @config = {
     skip_duplicate_requests: true,
     retry_request_errors: [Net::HTTPNotFound]
@@ -29,6 +35,7 @@ class AppleDeveloperSpider < Kimurai::Base
   def parse_framework(response, url:, data: {})
     framework_path = URI.parse(url).path
 
+    # the CSS tags have all evolved since this was created
     type = begin
                response.search('.topic-title .eyebrow')[0].text.strip
            rescue StandardError
@@ -53,16 +60,20 @@ class AppleDeveloperSpider < Kimurai::Base
 
     symbol = {}
     symbol[:type] = begin
+      ## .topictitle .eyebrow
                       response.search('.topic-title .eyebrow')[0].text.strip
                     rescue StandardError
                       nil
                     end
     if symbol[:type]
       symbol[:url] = url
+      ## .topictitle .title
       symbol[:name] = response.search('.topic-heading')[0].text.strip
       breadcrumbs_selector = %w[a span].map { |element| ".localnav-menu-breadcrumbs li #{element}" }.join(', ')
       symbol[:breadcrumbs] = response.search(breadcrumbs_selector).map { |e| e.text.strip.gsub(/⋯/, '') }
       symbol[:framework] = response.search('.frameworks li:first').text
+      
+      # nodocumentation is still the CSS used for "No overview available."
       symbol[:is_documented] = response.at('.nodocumentation').nil?
 
       text = response.search('#topic-content, .topic-description').text
@@ -78,6 +89,7 @@ class AppleDeveloperSpider < Kimurai::Base
       symbol[:number_of_topics] = response.search('#topics section').count
 
       sdks = {}
+      # .summary-list-item.platform li
       response.search('.sdks li').each do |sdk|
         *platform, version = sdk.text.split
         sdks[platform.join(' ')] = version
