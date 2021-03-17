@@ -19,6 +19,11 @@ class AppleDeveloperSpider < Kimurai::Base
   # https://developer.apple.com/tutorials/data/documentation/technologies.json
   #  - so load up the JSON, parse it and construct a set of "start urls", 
   # then invoke the crawl
+
+  # require 'json'
+  # uri = URI('https://developer.apple.com/tutorials/data/documentation/technologies.json')
+  # response = Net::HTTP.get(uri)
+  # x['sections']['groups']['technologies']->title, ['destination']->identifier
   @config = {
     skip_duplicate_requests: true,
     retry_request_errors: [Net::HTTPNotFound]
