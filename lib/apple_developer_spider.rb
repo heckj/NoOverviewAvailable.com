@@ -6,6 +6,7 @@ require 'net/http'
 
 require 'parallel'
 require 'kimurai'
+# Kimurai docs: <https://rubydoc.info/gems/kimurai/1.0.1>
 require 'nokogiri'
 require 'mechanize'
 require 'odyssey'
@@ -13,40 +14,53 @@ require 'odyssey'
 class AppleDeveloperSpider < Kimurai::Base
   @engine = :mechanize
   @start_urls = ['https://developer.apple.com/documentation/technologies/']
-  # top level page no longer includes direct links to underlying HTML, instead
-  # it's updated with Javascript that loads in the technologies from a JSON
-  # manifest, published at 
-  # https://developer.apple.com/tutorials/data/documentation/technologies.json
-  #  - so load up the JSON, parse it and construct a set of "start urls", 
-  # then invoke the crawl
-
-  # require 'json'
-  # uri = URI('https://developer.apple.com/tutorials/data/documentation/technologies.json')
-  # response = Net::HTTP.get(uri)
-  # x['sections']['groups']['technologies']->title, ['destination']->identifier
   @config = {
     skip_duplicate_requests: true,
     retry_request_errors: [Net::HTTPNotFound]
   }
 
-  def parse(response, url:, data: {})
-    Parallel.each(response.css('a.category-list-item-link')) do |framework|
-      request_to :parse_framework, url: URI.join('https://developer.apple.com/', framework[:href]).to_s
-    rescue StandardError => e
-      puts "There is failed request (#{e.inspect}), skipping it..."
-    end
-  end
+  # With the updated Rake task, each parse starts at a top-level framework page,
+  # with a starting URL for each technology.
 
-  def parse_framework(response, url:, data: {})
+  # def parse(response, url:, data: {})
+  #   Parallel.each(response.css('a.category-list-item-link')) do |framework|
+  #     request_to :parse_framework, url: URI.join('https://developer.apple.com/', framework[:href]).to_s
+  #   rescue StandardError => e
+  #     puts "There is failed request (#{e.inspect}), skipping it..."
+  #   end
+  # end
+
+  def parse(response, url:, data: {})
     framework_path = URI.parse(url).path
+
+    # response is Nokogiri::HTML::Document
+    # documentation: https://nokogiri.org/rdoc/Nokogiri/HTML/Document.html
+    
+    # example pages this should handle:
+    # - https://developer.apple.com/documentation/accessibility
+    # - https://developer.apple.com/documentation/app_clips
+    # - https://developer.apple.com/documentation/foundation
+
+    puts "=== PRINTF-DEBUG ==="
+    checking = response.search('.topictitle')
+    # helpful interactive development/debugging using Nokogiri to extract data
+    # from HTML: <http://ruby.bastardsbook.com/chapters/html-parsing/>
+
+#     require 'rubygems'
+# require 'nokogiri'
+# require 'open-uri'
+   
+# page = Nokogiri::HTML(open("http://en.wikipedia.org/"))   
+# puts page.class   # => Nokogiri::HTML::Document
+
 
     # the CSS tags have all evolved since this was created
     type = begin
-               response.search('.topic-title .eyebrow')[0].text.strip
-           rescue StandardError
-             nil
-             end
-
+      response.search('.topictitle .eyebrow')[0].text.strip
+    rescue StandardError
+      nil
+    end
+    print("Identified type of page: ", type, "\n")
     return unless type == 'Framework' || type.nil?
 
     response.css('a.symbol-name').each do |symbol|

@@ -7,6 +7,9 @@ require 'rake/clean'
 require 'oj'
 require 'parallel'
 
+require 'net/http'
+require 'json'
+
 directory 'tmp'
 CLEAN << 'tmp'
 
@@ -14,6 +17,43 @@ directory '_data/frameworks'
 CLOBBER << '_data/frameworks'
 
 task scrape: ['tmp'] do
+
+  # top level page no longer includes direct links to underlying HTML, instead
+  # it's updated with Javascript that loads in the technologies from a JSON
+  # manifest, published at 
+  # https://developer.apple.com/tutorials/data/documentation/technologies.json
+  spider = AppleDeveloperSpider
+
+  baseURI="https://developer.apple.com"
+  uri = URI('https://developer.apple.com/tutorials/data/documentation/technologies.json')
+  response = Net::HTTP.get(uri)
+  print('Technologies JSON requested\n')
+  technologies = JSON.parse(response)
+  # NOTE(heckj): this structure is specific to the technologies.json data format
+  # that's used by the Apple Developer Site - current as of March 2021. Undocumented
+  # (as you'd expect), so updates may be needed if the structure changes.
+  technologies['sections'].each do |section|
+    # puts("processing section")
+    if section['kind'] == 'technologies'
+      # puts("processing group")
+      section['groups'].each do |techgroup|
+        techgroup['technologies'].each do |tech|
+          # example identifier: doc://com.apple.documentation/documentation/kernelmanagement
+          uri = URI(tech['destination']['identifier'])
+          if tech['languages'][0] != 'data'
+            # puts(tech['title'])
+            # puts(tech['destination']['identifier'])
+            puts "Adding documentation URL: ", baseURI+uri.path
+            spider.start_urls.append(baseURI+uri.path)
+          else
+            puts "DATA API: ", tech['title']
+          end
+        end
+      end
+    end
+  end
+
+  # print "Starting URLS: ", spider.start_urls, "\n"
   AppleDeveloperSpider.crawl!
 end
 
