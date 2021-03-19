@@ -31,4 +31,5 @@ group :rakefile do
   gem 'oj'
   gem 'parallel'
   gem 'rake'
+  gem 'vessel'
 end

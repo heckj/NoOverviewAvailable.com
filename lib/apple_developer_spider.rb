@@ -1,45 +1,75 @@
 # frozen_string_literal: true
 
+# NOTE(heckj): After poking at this for a while, I've found that Apple's documentation
+# site now (post WWDC20) pretty much requires JavaScript to be active and rendering in
+# whatever mechanism is used to scrape the site, as the page build-ups are all happening
+# within JavaScript.
+# This pretty much throws a nasty-bomb on :mechanize, which is otherwise super cool.
+# In addition, Kimurai and friends were quite a challenge to get operational on an M1 Mac
+# so I looked at what other options might be available. I found and tried solutions in NodeJS,
+# but this site explicitly loads all it's data into Jekyll, so that's kind of a non-starter.
+# I also found https://github.com/rubycdp/vessel, which uses a Chromium wrapper (which has
+# JavaScript enabled within it) based on https://github.com/rubycdp/ferrum. It has a very
+# similar feel to Kimurai in how you operate it. It's not nearly as advanced as Kimurai, 
+# however - so I'm not sure hwo far I'll go trying it.
+
 require 'open-uri'
 require 'fileutils'
 require 'net/http'
 
 require 'parallel'
+require 'vessel'
+# <https://github.com/rubycdp/vessel>
+# docs: <https://www.rubydoc.info/gems/vessel>
+
 require 'kimurai'
 # Kimurai docs: <https://rubydoc.info/gems/kimurai/1.0.1>
 require 'nokogiri'
 require 'mechanize'
 require 'odyssey'
 
-class AppleDeveloperSpider < Kimurai::Base
-  @engine = :mechanize
-  @start_urls = ['https://developer.apple.com/documentation/technologies/']
-  @config = {
-    skip_duplicate_requests: true,
-    retry_request_errors: [Net::HTTPNotFound]
-  }
+class AppleDeveloperSpider < Vessel::Cargo
+  # @engine = :poltergeist_phantomjs  #NOTE(heckj): would be nice, but can't use mechanize with the top level page because it 
+  # loads and renders its content using JavaScript. So either we grab those files and structures
+  # directly, parse and determine the relevant URLs, or we use a different engine. 
+  # Options include ':poltergeist_phantomjs', ':selenium_chrome', and ':selenium_firefox'
+  domain "developer.apple.com"
+  start_urls = ['https://developer.apple.com/documentation/swiftui']
+  # @config = {
+  #   skip_duplicate_requests: true,
+  #   retry_request_errors: [Net::HTTPNotFound]
+  # }
 
   # With the updated Rake task, each parse starts at a top-level framework page,
   # with a starting URL for each technology.
 
-  # def parse(response, url:, data: {})
-  #   Parallel.each(response.css('a.category-list-item-link')) do |framework|
-  #     request_to :parse_framework, url: URI.join('https://developer.apple.com/', framework[:href]).to_s
-  #   rescue StandardError => e
-  #     puts "There is failed request (#{e.inspect}), skipping it..."
-  #   end
-  # end
-
   def parse(response, url:, data: {})
+    # The `a.card` selector is only valid is the scraping engine supports javascript
+    # and has waited for the page to fully load and evaluate.
+    Parallel.each(response.css('a.card')) do |framework|
+      request_to :parse_framework, url: URI.join('https://developer.apple.com/', framework[:href]).to_s
+    rescue StandardError => e
+      puts "There is failed request (#{e.inspect}), skipping it..."
+    end
+
+    print("HERE\n")
+    # If this is a framework or symbol page, it'll have a span.eyebrow we can inspect...
+    eyebrowQuery = response.css('span.eyebrow')
+    print(eyebrowQuery+"\n")
+    if (!eyebrowQuery[0].nil?)
+      typeOfPage = eyebrowQuery[0].text.strip
+      puts("Type of page is ", typeOfPage)
+    end
+  end
+
+  def parse_framework(response, url:, data: {})
     framework_path = URI.parse(url).path
 
     # response is Nokogiri::HTML::Document
     # documentation: https://nokogiri.org/rdoc/Nokogiri/HTML/Document.html
     
     # example pages this should handle:
-    # - https://developer.apple.com/documentation/accessibility
-    # - https://developer.apple.com/documentation/app_clips
-    # - https://developer.apple.com/documentation/foundation
+    # - https://developer.apple.com/documentation/swiftui
 
     puts "=== PRINTF-DEBUG ==="
     checking = response.search('.topictitle')

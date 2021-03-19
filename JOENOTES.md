@@ -9,3 +9,20 @@ bundler install
 rake clean
 rake scrape
 
+## Non-mechanize spiders
+
+    brew cask install google-chrome
+    brew cash install chromedriver
+    brew install phantomjs
+
+## Interactive scraping experiments with Nokogiri
+
+details references from <https://www.scrapingbee.com/blog/web-scraping-ruby/>
+
+`irb`:
+
+    require 'open-uri'
+    require 'nokogiri'
+    html = open("https://developer.apple.com/documentation/swiftui")
+    response = Nokogiri::HTML(html)
+    response.css("p").text
